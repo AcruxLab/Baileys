@@ -18,3 +18,12 @@ Proxy
 test.ts
 TestData
 wa-logs.txt
+
+__pycache__/
+*.directory
+*.pyc
+.project
+.pydevproject
+.settings
+.idea
+
