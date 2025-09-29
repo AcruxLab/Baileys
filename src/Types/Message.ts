@@ -1,4 +1,3 @@
-import type { AxiosRequestConfig } from 'axios'
 import type { Readable } from 'stream'
 import type { URL } from 'url'
 import { proto } from '../../WAProto/index.js'
@@ -17,6 +16,7 @@ export type WAMessageKey = proto.IMessageKey & {
 	remoteJidAlt?: string
 	participantAlt?: string
 	server_id?: string
+	addressingMode?: string
 	isViewOnce?: boolean // TODO: remove out of the message key, place in WebMessageInfo
 }
 export type WATextMessage = proto.Message.IExtendedTextMessage
@@ -334,7 +334,7 @@ export type MediaGenerationOptions = {
 
 	mediaUploadTimeoutMs?: number
 
-	options?: AxiosRequestConfig
+	options?: RequestInit
 
 	backgroundColor?: string
 
