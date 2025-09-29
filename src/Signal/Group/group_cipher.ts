@@ -1,3 +1,4 @@
+// @ts-expect-error no types available
 import { decrypt, encrypt } from 'libsignal/src/crypto'
 import { SenderKeyMessage } from './sender-key-message'
 import { SenderKeyName } from './sender-key-name'

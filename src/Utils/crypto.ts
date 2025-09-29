@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'crypto'
+// @ts-expect-error no types available
 import * as curve from 'libsignal/src/curve'
 import { KEY_BUNDLE_TYPE } from '../Defaults'
 import type { KeyPair } from '../Types'

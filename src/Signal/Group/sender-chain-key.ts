@@ -1,3 +1,4 @@
+// @ts-expect-error no types available
 import { calculateMAC } from 'libsignal/src/crypto'
 import { SenderMessageKey } from './sender-message-key'
 
