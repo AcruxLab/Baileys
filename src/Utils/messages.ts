@@ -642,14 +642,16 @@ export const generateWAMessageFromContent = (
 			: quoted.participant || quoted.key.participant || quoted.key.remoteJid
 
 		let quotedMsg = normalizeMessageContent(quoted.message)!
-		const msgType = getContentType(quotedMsg)!
-		// strip any redundant properties
-		quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
-
-		const quotedContent = quotedMsg[msgType]
-		if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
-			delete quotedContent.contextInfo
-		}
+        if (quotedMsg) {
+    		const msgType = getContentType(quotedMsg)!
+    		// strip any redundant properties
+    		quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
+    
+    		const quotedContent = quotedMsg[msgType]
+    		if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
+    			delete quotedContent.contextInfo
+    		}
+        }
 
 		const contextInfo: proto.IContextInfo =
 			('contextInfo' in innerMessage[key]! && innerMessage[key]?.contextInfo) || {}
