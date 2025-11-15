@@ -636,7 +636,7 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
-	if (quoted && !isJidNewsletter(jid)) {
+	if (quoted && quoted.key && !isJidNewsletter(jid)) {
 		const participant = quoted.key.fromMe
 			? userJid // TODO: Add support for LIDs
 			: quoted.participant || quoted.key.participant || quoted.key.remoteJid
