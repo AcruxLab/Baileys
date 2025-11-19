@@ -29,7 +29,12 @@ export default defineConfig([globalIgnores([
 ]),
 ...base,
 {
-    extends: compat.extends("plugin:prettier/recommended"),
+    extends: [
+      ...compat.extends("plugin:@typescript-eslint/recommended"),
+      ...compat.extends("plugin:@typescript-eslint/recommended-requiring-type-checking"),
+      ...compat.extends("plugin:prettier/recommended"),
+ 		],
+
 
     plugins: {
         prettier,
@@ -64,7 +69,7 @@ export default defineConfig([globalIgnores([
             named: "never",
             asyncArrow: "always",
         }],
-
+        "@typescript-eslint/no-floating-promises": "error",
         "@typescript-eslint/no-unused-vars": ["error", {
             caughtErrors: "none",
         }],

@@ -51,6 +51,7 @@ import {
 	getBinaryNodeChildren,
 	getBinaryNodeChildString,
 	isJidGroup,
+	isJidNewsletter,
 	isJidStatusBroadcast,
 	isLidUser,
 	isPnUser,
@@ -106,6 +107,9 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 			stdTTL: DEFAULT_CACHE_TTLS.MSG_RETRY, // 1 hour
 			useClones: false
 		})
+
+	// Debounce identity-change session refreshes per JID to avoid bursts
+	const identityAssertDebounce = new NodeCache<boolean>({ stdTTL: 5, useClones: false })
 
 	let sendActiveReceipts = false
 
@@ -545,8 +549,17 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 			const identityNode = getBinaryNodeChild(node, 'identity')
 			if (identityNode) {
 				logger.info({ jid: from }, 'identity changed')
-				// not handling right now
-				// signal will override new identity anyway
+				if (identityAssertDebounce.get(from!)) {
+					logger.debug({ jid: from }, 'skipping identity assert (debounced)')
+					return
+				}
+
+				identityAssertDebounce.set(from!, true)
+				try {
+					await assertSessions([from!], true)
+				} catch (error) {
+					logger.warn({ error, jid: from }, 'failed to assert sessions after identity change')
+				}
 			} else {
 				logger.info({ node }, 'unknown encrypt notification')
 			}
@@ -871,10 +884,44 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 				})
 				authState.creds.registered = true
 				ev.emit('creds.update', authState.creds)
+				break
+			case 'privacy_token':
+				await handlePrivacyTokenNotification(node)
+				break
 		}
 
 		if (Object.keys(result).length) {
 			return result
+		}
+	}
+
+	const handlePrivacyTokenNotification = async (node: BinaryNode) => {
+		const tokensNode = getBinaryNodeChild(node, 'tokens')
+		const from = jidNormalizedUser(node.attrs.from)
+
+		if (!tokensNode) return
+
+		const tokenNodes = getBinaryNodeChildren(tokensNode, 'token')
+
+		for (const tokenNode of tokenNodes) {
+			const { attrs, content } = tokenNode
+			const type = attrs.type
+			const timestamp = attrs.t
+
+			if (type === 'trusted_contact' && content instanceof Buffer) {
+				logger.debug(
+					{
+						from,
+						timestamp,
+						tcToken: content
+					},
+					'received trusted contact token'
+				)
+
+				await authState.keys.set({
+					'contacts-tc-token': { [from]: { token: content, timestamp } }
+				})
+			}
 		}
 	}
 
@@ -972,7 +1019,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 			}
 		}
 
-		await assertSessions([participant])
+		await assertSessions([participant], true)
 
 		if (isJidGroup(remoteJid)) {
 			await authState.keys.set({ 'sender-key-memory': { [remoteJid]: null } })
@@ -1143,11 +1190,21 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		}
 
 		const encNode = getBinaryNodeChild(node, 'enc')
+		const unavailableNode = getBinaryNodeChild(node, 'unavailable')
 
 		// TODO: temporary fix for crashes and issues resulting of failed msmsg decryption
 		if (encNode && encNode.attrs.type === 'msmsg') {
 			logger.debug({ key: node.attrs.key }, 'ignored msmsg')
 			await sendMessageAck(node, NACK_REASONS.MissingMessageSecret)
+			return
+		}
+
+		if (unavailableNode) {
+			logger.warn(
+				{ id: node.attrs.id, from: node.attrs.from, type: unavailableNode.attrs?.type },
+				'received unavailable message, sending positive ack'
+			)
+			await sendMessageAck(node)
 			return
 		}
 
@@ -1189,7 +1246,7 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 			await processingMutex.mutex(async () => {
 				await decrypt()
 				// message failed to decrypt
-				if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
+				if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT && msg.category !== 'peer') {
 					if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
 						return sendMessageAck(node, NACK_REASONS.ParsingError)
 					}
@@ -1240,30 +1297,36 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 						await sendMessageAck(node, NACK_REASONS.UnhandledError)
 					})
 				} else {
-					// no type in the receipt => message delivered
-					let type: MessageReceiptType = undefined
-					let participant = msg.key.participant
-					if (category === 'peer') {
-						// special peer message
-						type = 'peer_msg'
-					} else if (msg.key.fromMe) {
-						// message was sent by us from a different device
-						type = 'sender'
-						// need to specially handle this case
-						if (isLidUser(msg.key.remoteJid!) || isLidUser(msg.key.remoteJidAlt)) {
-							participant = author // TODO: investigate sending receipts to LIDs and not PNs
+					await sendMessageAck(node)
+					const isNewsletter = isJidNewsletter(msg.key.remoteJid!)
+					if (!isNewsletter) {
+						// no type in the receipt => message delivered
+						let type: MessageReceiptType = undefined
+						let participant = msg.key.participant
+						if (category === 'peer') {
+							// special peer message
+							type = 'peer_msg'
+						} else if (msg.key.fromMe) {
+							// message was sent by us from a different device
+							type = 'sender'
+							// need to specially handle this case
+							if (isLidUser(msg.key.remoteJid!) || isLidUser(msg.key.remoteJidAlt)) {
+								participant = author // TODO: investigate sending receipts to LIDs and not PNs
+							}
+						} else if (!sendActiveReceipts) {
+							type = 'inactive'
 						}
-					} else if (!sendActiveReceipts) {
-						type = 'inactive'
-					}
 
-					await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type)
+						await sendReceipt(msg.key.remoteJid!, participant!, [msg.key.id!], type)
 
-					// send ack for history message
-					const isAnyHistoryMsg = getHistoryMsg(msg.message!)
-					if (isAnyHistoryMsg) {
-						const jid = jidNormalizedUser(msg.key.remoteJid!)
-						await sendReceipt(jid, undefined, [msg.key.id!], 'hist_sync')
+						// send ack for history message
+						const isAnyHistoryMsg = getHistoryMsg(msg.message!)
+						if (isAnyHistoryMsg) {
+							const jid = jidNormalizedUser(msg.key.remoteJid!)
+							await sendReceipt(jid, undefined, [msg.key.id!], 'hist_sync')
+						}
+					} else {
+						logger.debug({ key: msg.key }, 'processed newsletter message without receipts')
 					}
 				}
 
@@ -1352,6 +1415,20 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 					}
 				}
 			])
+
+			// resend the message with device_fanout=false, use at your own risk
+			// if (attrs.error === '475') {
+			// 	const msg = await getMessage(key)
+			// 	if (msg) {
+			// 		await relayMessage(key.remoteJid!, msg, {
+			// 			messageId: key.id!,
+			// 			useUserDevicesCache: false,
+			// 			additionalAttributes: {
+			// 				device_fanout: 'false'
+			// 			}
+			// 		})
+			// 	}
+			// }
 		}
 	}
 
