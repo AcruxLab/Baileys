@@ -1,5 +1,4 @@
 import * as nodeCrypto from 'crypto'
-// @ts-expect-error no types available
 import { generateKeyPair } from 'libsignal/src/curve'
 
 type KeyPairType = ReturnType<typeof generateKeyPair>

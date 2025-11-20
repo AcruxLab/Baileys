@@ -1,4 +1,3 @@
-// @ts-expect-error no types available
 import { deriveSecrets } from 'libsignal/src/crypto'
 
 export class SenderMessageKey {

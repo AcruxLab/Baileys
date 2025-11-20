@@ -1,4 +1,3 @@
-// @ts-expect-error no types available
 import { calculateSignature, verifySignature } from 'libsignal/src/curve'
 import { proto } from '../../../WAProto/index.js'
 import { CiphertextMessage } from './ciphertext-message'
