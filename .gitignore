@@ -17,7 +17,7 @@ output.csv
 Proxy
 test.ts
 TestData
-wa-logs.txt
+wa-logs*
 coverage
 
 __pycache__/
@@ -27,4 +27,3 @@ __pycache__/
 .pydevproject
 .settings
 .idea
-
