@@ -929,6 +929,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 				encodeResult = await encodeSyncdPatch(patchCreate, myAppStateKeyId, initial, getAppStateSyncKey)
 				const { patch, state } = encodeResult
 
+                patch.deviceIndex = jidDecode(authState.creds.me?.id)?.device || 0    // ← nueva
+
 				const node: BinaryNode = {
 					tag: 'iq',
 					attrs: {
